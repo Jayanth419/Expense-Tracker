@@ -11,7 +11,7 @@ export default function LoginForm({
 }) {
   // Google login handler
   const handleGoogleLogin = async () => {
-    const redirectUrl = `http://localhost:5173/auth/callback`; // redirect back to your app
+    const redirectUrl = `https://expense-tracker-iota-fawn.vercel.app/`; // redirect back to your app
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: redirectUrl },
