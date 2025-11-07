@@ -1,90 +1,129 @@
-import React, { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 import AddExpenseForm from "./AddExpenseForm";
+import toast from "react-hot-toast";
 
-export default function Home() {
-  const [expenses, setExpenses] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editingExpense, setEditingExpense] = useState(null);
+// Fetch current user from Supabase
+async function fetchUser() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+}
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+// Fetch all categories
+async function fetchCategories() {
+  const { data, error } = await supabase.from("Categories").select("*");
+  if (error) throw error;
+  return data;
+}
 
-        const { data: catData } = await supabase.from("Categories").select("*");
-        setCategories(catData || []);
+// Fetch all expenses for user
+async function fetchExpenses(userId) {
+  const { data, error } = await supabase
+    .from("Expenses")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+}
 
-        const { data: expData } = await supabase
-          .from("Expenses")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-        setExpenses(expData || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  async function handleAddOrUpdate(expense) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    if (editingExpense) {
-      // Update existing expense
-      const { error } = await supabase
-        .from("Expenses")
-        .update({
-          title: expense.title,
-          amount: expense.amount,
-          category_id: expense.category_id,
-        })
-        .eq("id", editingExpense.id);
-
-      if (error) console.error(error);
-      else setEditingExpense(null);
-    } else {
-      // Add new expense
-      const { error } = await supabase
-        .from("Expenses")
-        .insert([{ ...expense, user_id: user.id }]);
-
-      if (error) console.error(error);
-    }
-
-    // Refresh expenses
-    const { data: expData } = await supabase
-      .from("Expenses")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-    setExpenses(expData || []);
-  }
-
-  async function handleDelete(expenseId) {
-    if (!confirm("Are you sure you want to delete this expense?")) return;
-
+// Insert or update expense in Supabase
+async function addOrUpdateExpense({ expense, userId, editingExpense }) {
+  if (editingExpense) {
+    // Update existing expense
     const { error } = await supabase
       .from("Expenses")
-      .delete()
-      .eq("id", expenseId);
-    if (error) console.error(error);
+      .update({
+        title: expense.title,
+        amount: expense.amount,
+        category_id: expense.category_id,
+      })
+      .eq("id", editingExpense.id);
+    if (error) throw error;
+    return { ...expense, id: editingExpense.id };
+  } else {
+    // Add new expense
+    const { data, error } = await supabase
+      .from("Expenses")
+      .insert([{ ...expense, user_id: userId }]);
+    if (error) throw error;
+    return data?.[0];
+  }
+}
 
-    setExpenses(expenses.filter((e) => e.id !== expenseId));
+// Delete expense by ID
+async function deleteExpense(id) {
+  const { error } = await supabase.from("Expenses").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export default function Home() {
+  const queryClient = useQueryClient();
+  const [editingExpense, setEditingExpense] = useState(null);
+
+  const { data: user, isLoading: userLoading } = useQuery({
+    queryKey: ["user"],
+    queryFn: fetchUser,
+  });
+
+  const { data: categories, isLoading: catLoading } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+    enabled: !!user,
+  });
+
+  const { data: expenses, isLoading: expLoading } = useQuery({
+    queryKey: ["expenses", user?.id],
+    queryFn: () => fetchExpenses(user.id),
+    enabled: !!user,
+  });
+
+  // Add/Edit
+  const mutation = useMutation({
+    mutationFn: ({ expense, editingExpense }) =>
+      addOrUpdateExpense({ expense, userId: user.id, editingExpense }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses", user?.id] });
+      setEditingExpense(null);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  // Delete
+  const deleteMutation = useMutation({
+    mutationFn: deleteExpense,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses", user?.id] });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  if (userLoading || catLoading || expLoading)
+    return <div className="text-center mt-10">Loading...</div>;
+
+  if (!user)
+    return (
+      <div className="text-center mt-10 text-gray-600 text-lg">
+        Please login to manage your expenses.
+      </div>
+    );
+
+  const safeCategories = categories || [];
+  const safeExpenses = expenses || [];
+
+  // form submit (add or update)
+  function handleAddOrUpdate(expense) {
+    mutation.mutate({ expense, editingExpense });
   }
 
-  if (loading) return <div className="text-center mt-10">Loading...</div>;
+  function handleDelete(expenseId) {
+    if (!window.confirm("Are you sure you want to delete this expense?"))
+      return;
+    deleteMutation.mutate(expenseId);
+  }
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
@@ -92,8 +131,9 @@ export default function Home() {
         {editingExpense ? "Edit Expense" : "Add Expense"}
       </h1>
 
+      {/* Expense Form */}
       <AddExpenseForm
-        categories={categories}
+        categories={safeCategories}
         onAdd={handleAddOrUpdate}
         initialData={editingExpense}
       />
@@ -102,15 +142,15 @@ export default function Home() {
         <h2 className="text-xl font-semibold text-blue-600 mb-3">
           Recent Transactions
         </h2>
-        {expenses.length > 0 ? (
+        {safeExpenses.length > 0 ? (
           <ul className="divide-y divide-gray-200">
-            {expenses.map((e) => (
+            {safeExpenses.map((e) => (
               <li key={e.id} className="py-2 flex justify-between items-center">
                 <div>
                   <p className="font-medium">{e.title}</p>
                   <p className="text-sm text-gray-500">
                     ₹{e.amount} •{" "}
-                    {categories.find((c) => c.id === e.category_id)?.name ||
+                    {safeCategories.find((c) => c.id === e.category_id)?.name ||
                       "Uncategorized"}
                   </p>
                 </div>
@@ -138,198 +178,3 @@ export default function Home() {
     </div>
   );
 }
-// import React, { useEffect, useState } from "react";
-// import { supabase } from "./supabaseClient";
-// import AddExpenseForm from "./AddExpenseForm";
-
-// export default function Home() {
-//   const [expenses, setExpenses] = useState([]);
-//   const [categories, setCategories] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [editingExpense, setEditingExpense] = useState(null);
-//   const [message, setMessage] = useState("");
-
-//   useEffect(() => {
-//     async function fetchData() {
-//       try {
-//         setLoading(true);
-//         const {
-//           data: { user },
-//         } = await supabase.auth.getUser();
-//         if (!user) return;
-
-//         // Fetch categories
-//         const { data: catData, error: catErr } = await supabase
-//           .from("Categories")
-//           .select("*");
-//         if (catErr) throw catErr;
-//         setCategories(catData ?? []);
-
-//         // Fetch expenses
-//         const { data: expData, error: expErr } = await supabase
-//           .from("Expenses")
-//           .select("*")
-//           .eq("user_id", user.id)
-//           .order("created_at", { ascending: false });
-//         if (expErr) throw expErr;
-//         setExpenses(expData ?? []);
-//       } catch (err) {
-//         console.error(err);
-//         setMessage("❌ Failed to load data.");
-//       } finally {
-//         setLoading(false);
-//       }
-//     }
-
-//     fetchData();
-//   }, []);
-
-//   async function handleAddOrUpdate(expense) {
-//     setMessage("");
-//     const {
-//       data: { user },
-//     } = await supabase.auth.getUser();
-//     if (!user) return;
-
-//     if (editingExpense) {
-//       // ✅ Update existing expense (optimized)
-//       const { data, error } = await supabase
-//         .from("Expenses")
-//         .update({
-//           title: expense.title,
-//           amount: expense.amount,
-//           category_id: expense.category_id,
-//         })
-//         .eq("id", editingExpense.id)
-//         .select()
-//         .single();
-
-//       if (error) {
-//         console.error(error);
-//         setMessage("❌ Failed to update expense.");
-//       } else {
-//         setExpenses((prev) =>
-//           prev.map((e) => (e.id === editingExpense.id ? data : e))
-//         );
-//         setEditingExpense(null);
-//         setMessage("✅ Expense updated successfully!");
-//       }
-//     } else {
-//       // ✅ Add new expense (optimized)
-//       const { data, error } = await supabase
-//         .from("Expenses")
-//         .insert([{ ...expense, user_id: user.id }])
-//         .select()
-//         .single();
-
-//       if (error) {
-//         console.error(error);
-//         setMessage("❌ Failed to add expense.");
-//       } else {
-//         setExpenses((prev) => [data, ...prev]);
-//         setMessage("✅ Expense added successfully!");
-//       }
-//     }
-//   }
-
-//   async function handleDelete(expenseId) {
-//     if (!confirm("Are you sure you want to delete this expense?")) return;
-
-//     const { error } = await supabase
-//       .from("Expenses")
-//       .delete()
-//       .eq("id", expenseId);
-
-//     if (error) {
-//       console.error(error);
-//       setMessage("❌ Failed to delete expense.");
-//     } else {
-//       setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
-//       setMessage("✅ Expense deleted successfully!");
-//     }
-//   }
-
-//   if (loading)
-//     return <div className="text-center mt-10 text-gray-600">Loading...</div>;
-
-//   return (
-//     <div className="bg-white p-6 rounded-lg shadow-md space-y-6 max-w-2xl mx-auto">
-//       {/* Header */}
-//       <div className="flex justify-between items-center">
-//         <h1 className="text-2xl font-bold text-blue-600">
-//           {editingExpense ? "Edit Expense" : "Add Expense"}
-//         </h1>
-//         {editingExpense && (
-//           <button
-//             onClick={() => setEditingExpense(null)}
-//             className="text-gray-500 hover:text-gray-700"
-//           >
-//             Cancel Edit
-//           </button>
-//         )}
-//       </div>
-
-//       {/* Status Message */}
-//       {message && (
-//         <div
-//           className={`text-sm font-medium ${
-//             message.startsWith("✅")
-//               ? "text-green-600"
-//               : message.startsWith("❌")
-//               ? "text-red-600"
-//               : "text-gray-600"
-//           }`}
-//         >
-//           {message}
-//         </div>
-//       )}
-
-//       {/* Add/Edit Form */}
-//       <AddExpenseForm
-//         categories={categories}
-//         onAdd={handleAddOrUpdate}
-//         initialData={editingExpense}
-//       />
-
-//       {/* Expenses List */}
-//       <div className="mt-6">
-//         <h2 className="text-xl font-semibold text-blue-600 mb-3">
-//           Recent Transactions
-//         </h2>
-
-//         {expenses.length > 0 ? (
-//           <ul className="divide-y divide-gray-200">
-//             {expenses.map((e) => (
-//               <li key={e.id} className="py-2 flex justify-between items-center">
-//                 <div>
-//                   <p className="font-medium">{e.title}</p>
-//                   <p className="text-sm text-gray-500">
-//                     ₹{e.amount} •{" "}
-//                     {categories.find((c) => c.id === e.category_id)?.name ||
-//                       "Uncategorized"}
-//                   </p>
-//                 </div>
-//                 <div className="flex space-x-3">
-//                   <button
-//                     className="text-blue-600 hover:text-blue-800"
-//                     onClick={() => setEditingExpense(e)}
-//                   >
-//                     Edit
-//                   </button>
-//                   <button
-//                     className="text-red-600 hover:text-red-800"
-//                     onClick={() => handleDelete(e.id)}
-//                   >
-//                     Delete
-//                   </button>
-//                 </div>
-//               </li>
-//             ))}
-//           </ul>
-//         ) : (
-//           <p className="text-gray-500">No recent transactions yet.</p>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }

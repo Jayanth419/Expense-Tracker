@@ -1,57 +1,101 @@
-import React, { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
+// Fetch current user
+async function fetchUser() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+}
+
+// Fetch categories from Supabase
+async function fetchCategories() {
+  const { data, error } = await supabase.from("Categories").select("*");
+  if (error) throw error;
+  return data;
+}
+
+// Fetch expenses for a specific user
+async function fetchExpenses(userId) {
+  const { data, error } = await supabase
+    .from("Expenses")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 export default function History() {
-  const [expenses, setExpenses] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Get user
+  const { data: user, isLoading: userLoading } = useQuery({
+    queryKey: ["user"],
+    queryFn: fetchUser,
+  });
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+  // Get categories (after user is loaded)
+  const {
+    data: categories,
+    isLoading: catLoading,
+    error: catError,
+  } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+    enabled: !!user,
+  });
 
-        if (!user) {
-          setExpenses([]);
-          setLoading(false);
-          return;
-        }
+  // Get expenses (after user is loaded)
+  const {
+    data: expenses,
+    isLoading: expLoading,
+    error: expError,
+  } = useQuery({
+    queryKey: ["expenses", user?.id],
+    queryFn: () => fetchExpenses(user.id),
+    enabled: !!user,
+  });
 
-        // categories
-        const { data: categoriesData, error: catError } = await supabase
-          .from("Categories")
-          .select("*");
-        if (catError) throw catError;
-        setCategories(categoriesData || []);
+  if (userLoading || catLoading || expLoading) {
+    return <div className="text-center mt-10">Loading...</div>;
+  }
 
-        // Fetch expenses for logged-in user
-        const { data: expensesData, error: expError } = await supabase
-          .from("Expenses")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-        if (expError) throw expError;
+  if (!user) {
+    return (
+      <div className="text-center mt-10 text-gray-600 text-lg">
+        Please login to see your expenses.
+      </div>
+    );
+  }
 
-        setExpenses(expensesData || []);
-      } catch (err) {
-        console.error("Error fetching user history:", err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
+  if (catError || expError) {
+    return (
+      <div className="text-center mt-10 text-red-600">
+        Error loading data. Please try again later.
+      </div>
+    );
+  }
 
-    fetchData();
-  }, []);
+  // Fallback to empty array to avoid crash
+  const safeCategories = categories || [];
+  const safeExpenses = expenses || [];
 
+  if (safeExpenses.length === 0) {
+    return (
+      <div className="text-center text-gray-600 mt-10 text-lg">
+        No expenses found.
+      </div>
+    );
+  }
+
+  // Get category name for an expense
   const getCategoryName = (id) => {
-    const cat = categories.find((c) => c.id === id);
+    const cat = safeCategories.find((c) => c.id === id);
     return cat ? cat.name : "Uncategorized";
   };
 
   // Group expenses by month-year
-  const groupedExpenses = expenses.reduce((acc, e) => {
+  const groupedExpenses = safeExpenses.reduce((acc, e) => {
     const date = new Date(e.created_at);
     const monthYear = date.toLocaleString("default", {
       month: "long",
@@ -62,34 +106,22 @@ export default function History() {
     return acc;
   }, {});
 
-  if (loading) return <div className="text-center mt-10">Loading...</div>;
-  if (expenses.length === 0)
-    return (
-      <div className="text-center text-gray-600 mt-10 text-lg">
-        No expenses found .
-      </div>
-    );
-
   return (
     <div className="max-w-5xl mx-auto bg-white p-6 rounded-2xl shadow-md space-y-8">
       <h1 className="text-2xl font-bold text-blue-600 mb-6">
         Your Expense History
       </h1>
-
       {Object.keys(groupedExpenses).map((month) => {
         const monthExpenses = groupedExpenses[month];
-
         const monthTotal = monthExpenses.reduce(
           (sum, e) => sum + Number(e.amount || 0),
           0
         );
-
         return (
           <div key={month} className="bg-gray-50 rounded-lg p-4 shadow-sm">
             <h2 className="text-xl font-semibold text-blue-600 mb-4">
               {month}
             </h2>
-
             <ul className="divide-y divide-gray-200">
               {monthExpenses.map((e) => (
                 <li
@@ -111,7 +143,6 @@ export default function History() {
                 </li>
               ))}
             </ul>
-
             <div className="text-right font-semibold rounded bg-violet-50 text-gray-700 border-t pt-2 mt-2">
               Total for {month}: ₹{monthTotal.toFixed(2)}
             </div>

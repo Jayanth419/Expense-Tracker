@@ -13,7 +13,6 @@ export default function Nav({ handleLogout }) {
           Expense-Tracker
         </h1>
       </div>
-
       <div className="flex flex-row sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4">
         <Link
           to="/home"

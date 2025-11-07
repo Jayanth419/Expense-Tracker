@@ -1,12 +1,29 @@
 import React, { useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { supabase } from "./supabaseClient";
+async function fetchCategories() {
+  const { data, error } = await supabase.from("categories").select("*");
+  if (error) throw error;
+  return data;
+}
 
-export default function AddExpenseForm({ categories, onAdd, initialData }) {
+export default function AddExpenseForm({ onAdd, initialData }) {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category_id, setCategoryId] = useState("");
+  const queryClient = useQueryClient(); // Fetch categories using useQuery
 
-  // Fill form
+  const {
+    data: categories = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+  });
+
   useEffect(() => {
     if (initialData) {
       setTitle(initialData.title);
@@ -19,18 +36,30 @@ export default function AddExpenseForm({ categories, onAdd, initialData }) {
     }
   }, [initialData]);
 
+  const mutation = useMutation({
+    mutationFn: async (expense) => {
+      const result = await onAdd(expense);
+      return result;
+    },
+    onSuccess: () => {
+      toast.success(initialData ? "Expense updated!" : "Expense added!");
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      setTitle("");
+      setAmount("");
+      setCategoryId("");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title || !amount || !category_id) {
       toast.error("Please fill all fields");
       return;
     }
-
-    onAdd({ title, amount, category_id });
-    toast.success(initialData ? "Expense updated!" : "Expense added!");
-    setTitle("");
-    setAmount("");
-    setCategoryId("");
+    mutation.mutate({ title, amount, category_id });
   };
 
   return (
@@ -38,10 +67,9 @@ export default function AddExpenseForm({ categories, onAdd, initialData }) {
       onSubmit={handleSubmit}
       className="bg-white border border-gray-200 p-6 rounded-2xl shadow-md space-y-5 transition-all hover:shadow-lg"
     >
-      {/* Title */}
       <div>
         <label className="block text-md font-medium text-gray-600 mb-1">
-          Expense Title
+          Expense Title{" "}
         </label>
         <input
           type="text"
@@ -52,11 +80,9 @@ export default function AddExpenseForm({ categories, onAdd, initialData }) {
           required
         />
       </div>
-
-      {/* Amount  */}
       <div>
         <label className="block text-md font-medium text-gray-600 mb-1">
-          Amount (₹)
+          Amount (₹ )
         </label>
         <input
           type="number"
@@ -67,8 +93,6 @@ export default function AddExpenseForm({ categories, onAdd, initialData }) {
           required
         />
       </div>
-
-      {/* Category  */}
       <div>
         <label className="block text-md font-medium text-gray-600 mb-1">
           Category
@@ -79,21 +103,35 @@ export default function AddExpenseForm({ categories, onAdd, initialData }) {
           className="w-full rounded-xl border border-gray-300 p-3 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
           required
         >
-          <option value="">Select Category</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
+          {isLoading ? (
+            <option>Loading...</option>
+          ) : isError ? (
+            <option>Error loading categories</option>
+          ) : (
+            <>
+              <option value="">Select Category</option> {" "}
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </>
+          )}
         </select>
       </div>
 
-      {/* Submit  */}
       <button
         type="submit"
         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition transform hover:scale-[1.02] active:scale-[0.98]"
+        disabled={mutation.isLoading}
       >
-        {initialData ? "Update Expense" : "+ Add Expense"}
+        {mutation.isLoading
+          ? initialData
+            ? "Updating..."
+            : "Adding..."
+          : initialData
+          ? "Update Expense"
+          : "+ Add Expense"}
       </button>
     </form>
   );

@@ -4,41 +4,53 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 import Nav from "./Nav";
 import Home from "./Home";
 import Monthly from "./Monthly";
 import History from "./History";
-import Login from "./LoginForm";
-import toast, { Toaster } from "react-hot-toast";
+import LoginForm from "./LoginForm";
+import toast from "react-hot-toast";
+import { useEffect } from "react";
+
+async function fetchSession() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.user ?? null;
+}
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: user, isLoading } = useQuery({
+    queryKey: ["userSession"],
+    queryFn: fetchSession,
+  });
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await supabase.auth.signOut();
+    },
+    onSuccess: () => {
+      toast.success("Logged out successfully!");
+      queryClient.invalidateQueries({ queryKey: ["userSession"] });
+    },
+    onError: (error) => toast.error("Logout failed: " + error.message),
+  });
 
   useEffect(() => {
-    async function getUser() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      queryClient.invalidateQueries({ queryKey: ["userSession"] });
+    });
+    return () => listener.subscription.unsubscribe();
+  }, [queryClient]);
 
-      supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-      });
-    }
-    getUser();
-  }, []);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    toast.success("Logged out successfully!");
-    setUser(null);
+  function handleLogout() {
+    mutation.mutate();
   }
 
-  if (loading)
+  if (isLoading)
     return (
       <div className="min-h-screen flex justify-center items-center">
         Loading...
@@ -47,13 +59,11 @@ export default function App() {
 
   return (
     <Router>
-      <Toaster position="top-center" />
-
       {user && <Nav handleLogout={handleLogout} />}
 
       <main className="max-w-5xl mx-auto px-4 mt-6">
         <Routes>
-          {!user && <Route path="*" element={<Login />} />}
+          {!user && <Route path="*" element={<LoginForm />} />}
           {user && (
             <>
               <Route path="/home" element={<Home />} />
