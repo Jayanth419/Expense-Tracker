@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
+import { Eye } from "lucide-react";
 
 // Fetch current user
 async function fetchUser() {
@@ -25,6 +26,15 @@ async function fetchExpenses(userId) {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data;
+}
+const PUBLIC_BASE_URL =
+  "https://ukvbfcsfahvaczymudqu.supabase.co/storage/v1/object/public/expense-images/";
+
+function handleViewImage(path) {
+  if (!path) return;
+
+  const fullUrl = `${PUBLIC_BASE_URL}${path}`;
+  window.open(fullUrl, "_blank", "noopener,noreferrer");
 }
 
 export default function History() {
@@ -96,7 +106,7 @@ export default function History() {
 
   // Group expenses by month-year
   const groupedExpenses = safeExpenses.reduce((acc, e) => {
-    const date = new Date(e.created_at);
+    const date = new Date(e.expense_date);
     const monthYear = date.toLocaleString("default", {
       month: "long",
       year: "numeric",
@@ -131,11 +141,20 @@ export default function History() {
                   <div>
                     <p className="font-medium">{e.title}</p>
                     <p className="text-sm text-gray-500 flex gap-2">
-                      {new Date(e.created_at).toLocaleDateString()} •{" "}
+                      {new Date(e.expense_date).toLocaleDateString()} •{" "}
                       <span className="italic text-gray-600">
                         {getCategoryName(e.category_id)}
                       </span>
                     </p>
+                    {e.expense_images && (
+                      <button
+                        className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                        onClick={() => handleViewImage(e.expense_images)}
+                      >
+                        View Image
+                        <Eye className="inline-block ml-1 h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                   <span className="font-semibold text-green-600">
                     ₹{Number(e.amount || 0).toFixed(2)}

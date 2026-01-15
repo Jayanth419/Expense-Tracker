@@ -3,6 +3,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 import AddExpenseForm from "./AddExpenseForm";
 import toast from "react-hot-toast";
+import { Eye, SquarePen, Trash2 } from "lucide-react";
+
+const PUBLIC_BASE_URL =
+  "https://ukvbfcsfahvaczymudqu.supabase.co/storage/v1/object/public/expense-images/";
+function handleViewImage(path) {
+  if (!path) return;
+
+  const fullUrl = `${PUBLIC_BASE_URL}${path}`;
+  window.open(fullUrl, "_blank", "noopener,noreferrer");
+}
 
 // Fetch current user from Supabase
 async function fetchUser() {
@@ -40,6 +50,8 @@ async function addOrUpdateExpense({ expense, userId, editingExpense }) {
         title: expense.title,
         amount: expense.amount,
         category_id: expense.category_id,
+        expense_date: expense.expense_date,
+        expense_images: expense.expense_images,
       })
       .eq("id", editingExpense.id);
     if (error) throw error;
@@ -48,9 +60,17 @@ async function addOrUpdateExpense({ expense, userId, editingExpense }) {
     // Add new expense
     const { data, error } = await supabase
       .from("Expenses")
-      .insert([{ ...expense, user_id: userId }]);
+      .insert([
+        {
+          ...expense,
+          user_id: userId,
+        },
+      ])
+      .select()
+      .single();
+
     if (error) throw error;
-    return data?.[0];
+    return data;
   }
 }
 
@@ -96,7 +116,10 @@ export default function Home() {
   const deleteMutation = useMutation({
     mutationFn: deleteExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["expenses", user?.id] });
+      queryClient.invalidateQueries(
+        { queryKey: ["expenses"] },
+        toast.success("Expense deleted!")
+      );
     },
     onError: (error) => toast.error(error.message),
   });
@@ -144,7 +167,7 @@ export default function Home() {
         </h2>
         {safeExpenses.length > 0 ? (
           <ul className="divide-y divide-gray-200">
-            {safeExpenses.map((e) => (
+            {safeExpenses.slice(0, 5).map((e) => (
               <li key={e.id} className="py-2 flex justify-between items-center">
                 <div>
                   <p className="font-medium">{e.title}</p>
@@ -153,19 +176,36 @@ export default function Home() {
                     {safeCategories.find((c) => c.id === e.category_id)?.name ||
                       "Uncategorized"}
                   </p>
+                  {e.expense_images && (
+                    <button
+                      className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                      onClick={() => handleViewImage(e.expense_images)}
+                    >
+                      View Image
+                      <Eye className="inline-block ml-1 h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex space-x-2 text-xs gap-3">
                   <button
-                    className="text-blue-600 hover:text-blue-800"
-                    onClick={() => setEditingExpense(e)}
+                    type="button"
+                    onClick={() => {
+                      window.scrollTo({
+                        top: 0,
+                        behavior: "smooth", // remove if you want instant jump
+                      });
+                      setEditingExpense(e);
+                    }}
+                    className="flex items-center gap-1 text-blue-600 hover:text-blue-800 cursor-pointer"
+                    aria-label="Edit expense"
                   >
-                    Edit
+                    <SquarePen className="h-4 w-4" />
                   </button>
                   <button
                     className="text-red-600 hover:text-red-800"
                     onClick={() => handleDelete(e.id)}
                   >
-                    Delete
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </li>

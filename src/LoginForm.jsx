@@ -2,13 +2,7 @@ import React from "react";
 import { supabase } from "./supabaseClient";
 import toast from "react-hot-toast";
 
-export default function LoginForm({
-  email,
-  setEmail,
-  password,
-  setPassword,
-  handleLogin,
-}) {
+export default function LoginForm({ email, setEmail, password, setPassword }) {
   // Google login handler
   const handleGoogleLogin = async () => {
     const redirectUrl = `https://expense-tracker-iota-fawn.vercel.app/`; // redirect back to your app
@@ -22,6 +16,23 @@ export default function LoginForm({
     } else {
       toast.success("Redirecting to Google login...");
     }
+  };
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      toast.error(
+        "No account found with this email.please sign in with google"
+      );
+      return;
+    }
+
+    toast.success("Login successful");
   };
 
   return (
