@@ -13,20 +13,23 @@ import History from "./History";
 import LoginForm from "./LoginForm";
 import toast from "react-hot-toast";
 import { useEffect } from "react";
+import { Toaster } from "react-hot-toast";
 
 async function fetchSession() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return session?.user ?? null;
+  return session;
 }
 
 export default function App() {
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery({
+  const { data: session, isLoading } = useQuery({
     queryKey: ["userSession"],
     queryFn: fetchSession,
   });
+
+  const user = session?.user ?? null;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -50,30 +53,40 @@ export default function App() {
     mutation.mutate();
   }
 
-  if (isLoading)
+  if (isLoading) {
     return (
       <div className="min-h-screen flex justify-center items-center">
         Loading...
       </div>
     );
+  }
 
   return (
-    <Router>
-      {user && <Nav handleLogout={handleLogout} />}
+    <>
+      <Toaster
+        position="top-center"
+        reverseOrder={false}
+        toastOptions={{
+          duration: 3000,
+        }}
+      />
+      <Router>
+        {user && <Nav handleLogout={handleLogout} />}
 
-      <main className="max-w-5xl mx-auto px-4 mt-6">
-        <Routes>
-          {!user && <Route path="*" element={<LoginForm />} />}
-          {user && (
-            <>
-              <Route path="/home" element={<Home />} />
-              <Route path="/monthly" element={<Monthly />} />
-              <Route path="/history" element={<History />} />
-              <Route path="*" element={<Navigate to="/home" replace />} />
-            </>
-          )}
-        </Routes>
-      </main>
-    </Router>
+        <main className="max-w-5xl mx-auto px-4 mt-6">
+          <Routes>
+            {!user && <Route path="*" element={<LoginForm />} />}
+            {user && (
+              <>
+                <Route path="/home" element={<Home />} />
+                <Route path="/monthly" element={<Monthly />} />
+                <Route path="/history" element={<History />} />
+                <Route path="*" element={<Navigate to="/home" replace />} />
+              </>
+            )}
+          </Routes>
+        </main>
+      </Router>
+    </>
   );
 }
