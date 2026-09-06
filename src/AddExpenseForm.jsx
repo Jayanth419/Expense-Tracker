@@ -372,17 +372,6 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
           : user?.user_metadata?.full_name || "You",
       };
 
-      const splitsData =
-        isSplit && splitCalculation.isValid
-          ? splitCalculation.shares.map((s) => ({
-              user_id: s.participant.user_id || null,
-              contact_id: s.participant.contact_id || null,
-              participant_name: s.participant.name,
-              share_amount: s.amount,
-              share_percentage: s.percentage || null,
-              share_count: s.shares || null,
-            }))
-          : [];
       let splitsData = [];
       if (isSplit && splitCalculation?.isValid) {
         const calculatedList =

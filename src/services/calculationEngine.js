@@ -311,12 +311,6 @@ export function calculateShareSplit(totalAmount, participants, shares = {}) {
       share_count: Number(shares[p.id] || 0),
     }));
     return {
-      splits: participants.map((p) => ({
-        ...p,
-        share_amount: 0,
-        share_percentage: 0,
-        share_count: Number(shares[p.id] || 0),
-      })),
       splits: emptySplits,
       shares: emptySplits,
       totalAssigned: 0,
