@@ -2,47 +2,33 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 import {
-  PieChart,
+  PieChart as RechartsPie,
   Pie,
   Cell,
   Tooltip,
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { PieChart, Calendar, Tag, ArrowRight } from "lucide-react";
+import { fetchAllExpensesAndSplits } from "./services/expenseService";
+import { formatCurrency } from "./services/calculationEngine";
 
 const COLORS = [
-  "#0088FE",
-  "#00C49F",
-  "#FFBB28",
-  "#FF8042",
-  "#A020F0",
-  "#FF3399",
+  "#2563EB", // Blue
+  "#10B981", // Emerald
+  "#F59E0B", // Amber
+  "#EF4444", // Rose
+  "#8B5CF6", // Purple
+  "#EC4899", // Pink
+  "#06B6D4", // Cyan
+  "#64748B", // Slate
 ];
 
-// Get current user info
-async function fetchUser() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
-
-// Fetch all categories
+// Fetch categories
 async function fetchCategories() {
   const { data, error } = await supabase.from("Categories").select("*");
   if (error) throw error;
-  return data;
-}
-
-// Fetch all expenses for current user
-async function fetchExpenses(userId) {
-  const { data, error } = await supabase
-    .from("Expenses")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
+  return data || [];
 }
 
 export default function Monthly() {
@@ -50,63 +36,72 @@ export default function Monthly() {
   const [selectedCategory, setSelectedCategory] = useState(null);
 
   const { data: user, isLoading: userLoading } = useQuery({
-    queryKey: ["user"],
-    queryFn: fetchUser,
+    queryKey: ["userSession"],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data?.user || null;
+    },
   });
 
-  const {
-    data: categories,
-    isLoading: catLoading,
-    error: catError,
-  } = useQuery({
+  const { data: categories = [], isLoading: catLoading } = useQuery({
     queryKey: ["categories"],
     queryFn: fetchCategories,
     enabled: !!user,
   });
 
   const {
-    data: expenses,
+    data: expensesData = { expenses: [], splits: [] },
     isLoading: expLoading,
-    error: expError,
   } = useQuery({
     queryKey: ["expenses", user?.id],
-    queryFn: () => fetchExpenses(user.id),
+    queryFn: () => fetchAllExpensesAndSplits(user?.id),
     enabled: !!user,
   });
 
-  // Combined loading, error, or empty states
   if (userLoading || catLoading || expLoading) {
-    return <div className="text-center mt-10">Loading...</div>;
-  }
-  if (!user) {
     return (
-      <div className="text-center mt-10 text-gray-600 text-lg">
-        Please login to view summary.
+      <div className="text-center py-16 text-slate-500">
+        Loading monthly analytics...
       </div>
     );
   }
-  if (catError || expError) {
+
+  if (!user) {
     return (
-      <div className="text-center mt-10 text-red-600">
-        Error loading data. Please try again later.
+      <div className="text-center py-16 text-slate-600 text-lg">
+        Please login to view monthly analysis.
       </div>
     );
   }
 
   const safeCategories = categories || [];
-  const safeExpenses = expenses || [];
+  const safeExpenses = Array.isArray(expensesData)
+    ? expensesData
+    : expensesData?.expenses || [];
 
   if (safeExpenses.length === 0) {
-    return <div className="text-center mt-10">No expenses found.</div>;
+    return (
+      <div className="bg-white rounded-2xl p-10 text-center border border-slate-200 shadow-2xs max-w-2xl mx-auto space-y-2">
+        <PieChart className="w-10 h-10 text-slate-300 mx-auto" />
+        <h3 className="text-base font-bold text-slate-800">
+          No expenses recorded yet
+        </h3>
+        <p className="text-xs text-slate-400">
+          Record expenses to see visual monthly breakdowns and category charts.
+        </p>
+      </div>
+    );
   }
 
   // Filter expenses for selected month
   const filteredExpenses = selectedMonth
     ? safeExpenses.filter((e) => {
-        const date = new Date(e.created_at);
+        const date = new Date(e.expense_date || e.created_at);
         return (
-          date.toLocaleString("default", { month: "long", year: "numeric" }) ===
-          selectedMonth
+          date.toLocaleString("default", {
+            month: "long",
+            year: "numeric",
+          }) === selectedMonth
         );
       })
     : safeExpenses;
@@ -121,11 +116,16 @@ export default function Monthly() {
     })
     .filter((d) => d.value > 0);
 
+  const totalFilteredAmount = filteredExpenses.reduce(
+    (sum, e) => sum + Number(e.amount || 0),
+    0
+  );
+
   // Month select options
   const monthOptions = [
     ...new Set(
       safeExpenses.map((e) => {
-        const date = new Date(e.created_at);
+        const date = new Date(e.expense_date || e.created_at);
         return date.toLocaleString("default", {
           month: "long",
           year: "numeric",
@@ -135,42 +135,72 @@ export default function Monthly() {
   ];
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
-      <h1 className="text-2xl font-bold text-blue-600 mb-4">Monthly Summary</h1>
+    <div className="space-y-6 animate-fadeIn pb-14 max-w-2xl mx-auto">
+      {/* Header Banner */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-blue-600 tracking-tight flex items-center gap-2">
+              <PieChart className="w-6 h-6 text-blue-600" />
+              Monthly Analysis
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Category distribution and spending trends.
+            </p>
+          </div>
 
-      {/* Month selector */}
-      <select
-        className="border px-3 py-1 rounded"
-        value={selectedMonth}
-        onChange={(e) => {
-          setSelectedMonth(e.target.value);
-          setSelectedCategory(null); // Reset category on month change
-        }}
-      >
-        <option value="">All Months</option>
-        {monthOptions.map((month) => (
-          <option key={month} value={month}>
-            {month}
-          </option>
-        ))}
-      </select>
+          {/* Month Selector */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl w-fit">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <select
+              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setSelectedCategory(null);
+              }}
+            >
+              <option value="">All Time</option>
+              {monthOptions.map((month) => (
+                <option key={month} value={month}>
+                  {month}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-      {/* Row: Pie chart + Category table */}
-      <div className="flex flex-col md:flex-row gap-6 mt-6">
-        {/* Pie chart */}
-        <div className="md:w-1/2 w-full h-80 sm:h-96">
-          {pieData.length > 0 ? (
+        {/* Total Metric */}
+        <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-600">
+            Total Spend for {selectedMonth || "All Time"}
+          </span>
+          <span className="text-lg font-black text-blue-600">
+            {formatCurrency(totalFilteredAmount)}
+          </span>
+        </div>
+      </div>
+
+      {/* Row: Pie chart + Category Table */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+        <h2 className="text-base font-bold text-slate-800">
+          Category Distribution
+        </h2>
+
+        {pieData.length > 0 ? (
+          <div className="h-64 sm:h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
+              <RechartsPie>
                 <Pie
                   data={pieData}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
                   cy="50%"
-                  outerRadius={80}
+                  outerRadius={85}
+                  innerRadius={45}
+                  paddingAngle={3}
                   fill="#8884d8"
-                  label
                 >
                   {pieData.map((entry, index) => (
                     <Cell
@@ -179,52 +209,79 @@ export default function Monthly() {
                     />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  formatter={(value) => formatCurrency(value)}
+                  contentStyle={{
+                    backgroundColor: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                  }}
+                />
                 <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
+              </RechartsPie>
             </ResponsiveContainer>
-          ) : (
-            <p className="text-gray-500 mt-4">
-              No expenses for the selected month.
-            </p>
-          )}
-        </div>
-        {/* Category table */}
-        <div className="md:w-1/2 w-full overflow-x-auto">
-          <table className="min-w-full border divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">
-                  Category
-                </th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {pieData.map((d) => (
-                <tr
-                  key={d.name}
-                  className="cursor-pointer hover:bg-gray-100"
-                  onClick={() => setSelectedCategory(d.name)}
-                >
-                  <td className="px-4 py-2">{d.name}</td>
-                  <td className="px-4 py-2">₹{d.value.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-10 text-slate-400 text-xs">
+            No expenses found for this period.
+          </div>
+        )}
+
+        {/* Category Share List */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+          {pieData.map((d, index) => {
+            const pct =
+              totalFilteredAmount > 0
+                ? ((d.value / totalFilteredAmount) * 100).toFixed(1)
+                : 0;
+
+            return (
+              <div
+                key={d.name}
+                onClick={() => setSelectedCategory(d.name)}
+                className="p-3 flex items-center justify-between hover:bg-slate-50 transition cursor-pointer text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{
+                      backgroundColor: COLORS[index % COLORS.length],
+                    }}
+                  ></span>
+                  <span className="font-bold text-slate-800">{d.name}</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-500 font-semibold">{pct}%</span>
+                  <span className="font-black text-slate-900">
+                    {formatCurrency(d.value)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Details for selected category */}
+      {/* Details for Selected Category */}
       {selectedCategory && (
-        <div className="mt-6 bg-gray-50 p-4 rounded-lg shadow-inner">
-          <h3 className="font-semibold text-blue-600 mb-2">
-            Expenses in {selectedCategory}
-          </h3>
-          <ul className="divide-y divide-gray-200">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 animate-slideUp">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+              <Tag className="w-4 h-4 text-blue-600" />
+              Transactions in {selectedCategory}
+            </h3>
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className="text-xs text-slate-400 hover:text-slate-600 font-semibold cursor-pointer"
+            >
+              Clear Filter
+            </button>
+          </div>
+
+          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
             {filteredExpenses
               .filter(
                 (e) =>
@@ -232,14 +289,27 @@ export default function Monthly() {
                   selectedCategory
               )
               .map((e) => (
-                <li key={e.id} className="py-2 flex justify-between">
-                  <span>{e.title}</span>
-                  <span className="font-semibold text-green-600">
-                    ₹{e.amount}
+                <div
+                  key={e.id}
+                  className="p-3 flex justify-between items-center hover:bg-slate-50 text-xs"
+                >
+                  <div>
+                    <span className="font-bold text-slate-900 uppercase block">
+                      {e.title}
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      {new Date(
+                        e.expense_date || e.created_at
+                      ).toLocaleDateString()}
+                      {e.is_split ? " • Split" : " • Personal"}
+                    </span>
+                  </div>
+                  <span className="font-black text-slate-900 text-sm">
+                    {formatCurrency(e.amount)}
                   </span>
-                </li>
+                </div>
               ))}
-          </ul>
+          </div>
         </div>
       )}
     </div>
