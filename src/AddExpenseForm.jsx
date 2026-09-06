@@ -78,7 +78,7 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
   const [paidByKey, setPaidByKey] = useState("user_current");
   const [splitMethod, setSplitMethod] = useState(SPLIT_METHODS.EQUAL);
   const [selectedParticipantIds, setSelectedParticipantIds] = useState(
-    new Set(["user_current"])
+    new Set(["user_current"]),
   );
   const [exactAmounts, setExactAmounts] = useState({});
   const [percentages, setPercentages] = useState({});
@@ -123,7 +123,7 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
       setExpenseDate(
         initialData.expense_date ||
           initialData.created_at?.split("T")[0] ||
-          today
+          today,
       );
       setPaymentMethod(initialData.payment_method || "Cash");
       setExistingImage(initialData.expense_images || null);
@@ -220,8 +220,8 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
           const id = m.registered_user_id
             ? `user_${m.registered_user_id}`
             : m.contact_id
-            ? `contact_${m.contact_id}`
-            : `member_${m.id}`;
+              ? `contact_${m.contact_id}`
+              : `member_${m.id}`;
 
           list.push({
             id,
@@ -257,7 +257,7 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
   // Selected participants
   const selectedParticipants = useMemo(() => {
     return availableParticipants.filter((p) =>
-      selectedParticipantIds.has(p.id)
+      selectedParticipantIds.has(p.id),
     );
   }, [availableParticipants, selectedParticipantIds]);
 
@@ -284,13 +284,13 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
         return calculateExactSplit(
           numericAmount,
           selectedParticipants,
-          exactAmounts
+          exactAmounts,
         );
       case SPLIT_METHODS.PERCENTAGE:
         return calculatePercentageSplit(
           numericAmount,
           selectedParticipants,
-          percentages
+          percentages,
         );
       case SPLIT_METHODS.SHARES:
         return calculateShareSplit(numericAmount, selectedParticipants, shares);
@@ -324,9 +324,7 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
   }
 
   function handleSelectAllParticipants() {
-    setSelectedParticipantIds(
-      new Set(availableParticipants.map((p) => p.id))
-    );
+    setSelectedParticipantIds(new Set(availableParticipants.map((p) => p.id)));
   }
 
   function handleDeselectAllExceptMe() {
@@ -385,6 +383,52 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
               share_count: s.shares || null,
             }))
           : [];
+      let splitsData = [];
+      if (isSplit && splitCalculation?.isValid) {
+        const calculatedList =
+          splitCalculation?.splits || splitCalculation?.shares || [];
+
+        splitsData = calculatedList.map((s) => {
+          const participantObj =
+            s.participant ||
+            availableParticipants.find(
+              (p) => p.id === s.id || p.key === s.id || p.id === s.key,
+            ) ||
+            {};
+
+          const pUserId = participantObj.isCurrentUser
+            ? user.id
+            : participantObj.user_id || s.user_id || null;
+          const pContactId = participantObj.contact_id || s.contact_id || null;
+          const pName =
+            participantObj.name ||
+            s.participant_name ||
+            s.name ||
+            "Participant";
+          const pAmount = Number(s.share_amount ?? s.amount ?? 0);
+          const pPercentage =
+            s.share_percentage !== undefined && s.share_percentage !== null
+              ? Number(s.share_percentage)
+              : s.percentage !== undefined && s.percentage !== null
+                ? Number(s.percentage)
+                : null;
+          const pShares =
+            s.share_count !== undefined && s.share_count !== null
+              ? Number(s.share_count)
+              : s.shares !== undefined && s.shares !== null
+                ? Number(s.shares)
+                : null;
+
+          return {
+            user_id: pUserId,
+            contact_id: pContactId,
+            participant_name: pName,
+            share_amount: pAmount,
+            share_percentage: pPercentage,
+            share_count: pShares,
+          };
+        });
+      }
 
       if (initialData?.id) {
         return await updateExpense(initialData.id, expenseData, splitsData);
@@ -396,7 +440,7 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
       toast.success(
         initialData
           ? "Expense updated successfully!"
-          : "Expense added successfully!"
+          : "Expense added successfully!",
       );
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["settlements"] });
@@ -453,7 +497,7 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
       if (!splitCalculation.isValid) {
         toast.error(
           splitCalculation.error ||
-            "Please adjust splits to match the total amount."
+            "Please adjust splits to match the total amount.",
         );
         return;
       }
@@ -727,8 +771,8 @@ export default function AddExpenseForm({ initialData, onCancelEdit }) {
             {mutation.isPending
               ? "Saving Expense..."
               : initialData
-              ? "Update Expense"
-              : "+ Add Expense"}
+                ? "Update Expense"
+                : "+ Add Expense"}
           </button>
 
           {initialData && onCancelEdit && (

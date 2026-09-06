@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import {
   Users,
   Percent,
@@ -7,33 +7,44 @@ import {
   Plus,
   AlertCircle,
   CheckCircle2,
-  User,
 } from "lucide-react";
 import {
   SPLIT_METHODS,
   formatCurrency,
-  calculateEqualSplit,
-  calculateExactSplit,
-  calculatePercentageSplit,
-  calculateShareSplit,
 } from "../../services/calculationEngine";
 
-export default function SplitSelector({
-  totalAmount,
-  splitMethod,
-  setSplitMethod,
-  selectedParticipants,
-  onToggleParticipant,
-  exactAmounts,
-  setExactAmounts,
-  percentages,
-  setPercentages,
-  shares,
-  setShares,
-  onOpenAddContact,
-  calculatedSplits,
-  splitValidation,
-}) {
+export default function SplitSelector(props) {
+  const {
+    totalAmount = 0,
+    splitMethod = SPLIT_METHODS.EQUAL,
+    exactAmounts = {},
+    percentages = {},
+    shares = {},
+    onOpenAddContact,
+  } = props;
+
+  // Support both prop naming variations
+  const participants = props.participants || props.selectedParticipants || [];
+  const handleSplitMethodChange =
+    props.onSplitMethodChange || props.setSplitMethod || (() => {});
+  const handleExactAmountsChange =
+    props.onExactAmountsChange || props.setExactAmounts || (() => {});
+  const handlePercentagesChange =
+    props.onPercentagesChange || props.setPercentages || (() => {});
+  const handleSharesChange =
+    props.onSharesChange || props.setShares || (() => {});
+
+  // Support both splitCalculation and splitValidation / calculatedSplits
+  const calculation = props.splitCalculation || {
+    isValid: Boolean(props.splitValidation?.isValid),
+    totalAssigned: Number(props.splitValidation?.totalAssigned || 0),
+    remaining: Number(props.splitValidation?.remaining ?? totalAmount),
+    error: props.splitValidation?.error || null,
+    shares: props.calculatedSplits || [],
+  };
+
+  const calculatedShares = calculation.shares || [];
+
   const methodTabs = [
     { id: SPLIT_METHODS.EQUAL, label: "Equally", icon: Users },
     { id: SPLIT_METHODS.EXACT, label: "Exact Amounts", icon: CircleDollarSign },
@@ -48,14 +59,16 @@ export default function SplitSelector({
           <Users className="w-4 h-4 text-blue-600" />
           Split Method
         </label>
-        <button
-          type="button"
-          onClick={onOpenAddContact}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Contact
-        </button>
+        {onOpenAddContact && (
+          <button
+            type="button"
+            onClick={onOpenAddContact}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Contact
+          </button>
+        )}
       </div>
 
       {/* Split Method Selector Tabs */}
@@ -67,7 +80,7 @@ export default function SplitSelector({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setSplitMethod(tab.id)}
+              onClick={() => handleSplitMethodChange(tab.id)}
               className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer ${
                 isActive
                   ? "bg-blue-600 text-white shadow-sm font-semibold"
@@ -84,22 +97,29 @@ export default function SplitSelector({
       {/* Participants List */}
       <div className="space-y-2.5">
         <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Split Between ({selectedParticipants.length} selected)
+          Split Between ({participants.length} selected)
         </div>
 
         <div className="divide-y divide-slate-200 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          {selectedParticipants.length === 0 ? (
+          {participants.length === 0 ? (
             <div className="p-4 text-center text-sm text-slate-500">
-              No participants selected. Please select or add contacts below.
+              No participants selected. Please select participants above.
             </div>
           ) : (
-            selectedParticipants.map((p) => {
-              const splitRecord = calculatedSplits.find((s) => s.id === p.id);
-              const shareAmount = splitRecord ? splitRecord.share_amount : 0;
+            participants.map((p) => {
+              const splitRecord = calculatedShares.find(
+                (s) =>
+                  s.participant?.id === p.id ||
+                  s.participant?.key === p.key ||
+                  s.id === p.id,
+              );
+              const shareAmount = splitRecord
+                ? splitRecord.amount || splitRecord.share_amount || 0
+                : 0;
 
               return (
                 <div
-                  key={p.id}
+                  key={p.id || p.key}
                   className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50/70 transition"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -137,7 +157,7 @@ export default function SplitSelector({
                           min="0"
                           value={exactAmounts[p.id] ?? ""}
                           onChange={(e) =>
-                            setExactAmounts((prev) => ({
+                            handleExactAmountsChange((prev) => ({
                               ...prev,
                               [p.id]: e.target.value,
                             }))
@@ -158,7 +178,7 @@ export default function SplitSelector({
                             max="100"
                             value={percentages[p.id] ?? ""}
                             onChange={(e) =>
-                              setPercentages((prev) => ({
+                              handlePercentagesChange((prev) => ({
                                 ...prev,
                                 [p.id]: e.target.value,
                               }))
@@ -182,7 +202,7 @@ export default function SplitSelector({
                           <button
                             type="button"
                             onClick={() =>
-                              setShares((prev) => ({
+                              handleSharesChange((prev) => ({
                                 ...prev,
                                 [p.id]: Math.max(
                                   1,
@@ -190,7 +210,7 @@ export default function SplitSelector({
                                 ),
                               }))
                             }
-                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
                           >
                             -
                           </button>
@@ -199,7 +219,7 @@ export default function SplitSelector({
                             min="1"
                             value={shares[p.id] ?? 1}
                             onChange={(e) =>
-                              setShares((prev) => ({
+                              handleSharesChange((prev) => ({
                                 ...prev,
                                 [p.id]: Math.max(
                                   1,
@@ -212,12 +232,12 @@ export default function SplitSelector({
                           <button
                             type="button"
                             onClick={() =>
-                              setShares((prev) => ({
+                              handleSharesChange((prev) => ({
                                 ...prev,
                                 [p.id]: Number(prev[p.id] || 1) + 1,
                               }))
                             }
-                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
                           >
                             +
                           </button>
@@ -239,20 +259,22 @@ export default function SplitSelector({
       <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
         <div className="flex justify-between text-xs text-slate-600 font-medium">
           <span>Total: {formatCurrency(totalAmount)}</span>
-          <span>Assigned: {formatCurrency(splitValidation.totalAssigned)}</span>
+          <span>
+            Assigned: {formatCurrency(calculation.totalAssigned || 0)}
+          </span>
           <span
             className={
-              splitValidation.remaining === 0
+              calculation.remaining === 0
                 ? "text-green-600 font-bold"
                 : "text-amber-600 font-bold"
             }
           >
-            Remaining: {formatCurrency(splitValidation.remaining)}
+            Remaining: {formatCurrency(calculation.remaining || 0)}
           </span>
         </div>
 
         {/* Validation Status Indicator */}
-        {splitValidation.isValid ? (
+        {calculation.isValid ? (
           <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
             <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
             <span>Split calculations match total expense exactly.</span>
@@ -261,7 +283,7 @@ export default function SplitSelector({
           <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
             <span>
-              {splitValidation.error ||
+              {calculation.error ||
                 "Please adjust splits to match the total expense."}
             </span>
           </div>

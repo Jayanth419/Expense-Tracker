@@ -101,6 +101,7 @@ export function calculateEqualSplit(totalAmount, participants) {
 
   return {
     splits,
+    shares: splits,
     totalAssigned: fromPaise(totalAssignedPaise),
     remaining: 0,
     isValid: true,
@@ -168,6 +169,7 @@ export function calculateExactSplit(
 
   return {
     splits,
+    shares: splits,
     totalAssigned,
     remaining,
     isValid,
@@ -193,6 +195,7 @@ export function calculatePercentageSplit(
   if (!participants || participants.length === 0) {
     return {
       splits: [],
+      shares: [],
       totalAssigned: 0,
       remaining: total,
       totalPercent: 0,
@@ -259,6 +262,7 @@ export function calculatePercentageSplit(
 
   return {
     splits,
+    shares: splits,
     totalAssigned,
     remaining,
     totalPercent: Number(totalPercent.toFixed(2)),
@@ -281,6 +285,7 @@ export function calculateShareSplit(totalAmount, participants, shares = {}) {
   if (!participants || participants.length === 0) {
     return {
       splits: [],
+      shares: [],
       totalAssigned: 0,
       remaining: total,
       totalShares: 0,
@@ -299,6 +304,12 @@ export function calculateShareSplit(totalAmount, participants, shares = {}) {
   });
 
   if (totalShares <= 0 || total <= 0) {
+    const emptySplits = participants.map((p) => ({
+      ...p,
+      share_amount: 0,
+      share_percentage: 0,
+      share_count: Number(shares[p.id] || 0),
+    }));
     return {
       splits: participants.map((p) => ({
         ...p,
@@ -306,6 +317,8 @@ export function calculateShareSplit(totalAmount, participants, shares = {}) {
         share_percentage: 0,
         share_count: Number(shares[p.id] || 0),
       })),
+      splits: emptySplits,
+      shares: emptySplits,
       totalAssigned: 0,
       remaining: total,
       totalShares,
@@ -367,6 +380,7 @@ export function calculateShareSplit(totalAmount, participants, shares = {}) {
 
   return {
     splits,
+    shares: splits,
     totalAssigned: fromPaise(totalAssignedPaise),
     remaining: 0,
     totalShares,
